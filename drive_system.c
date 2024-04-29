@@ -1,125 +1,116 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
-#define QUEUE_SIZE 10
-#define N_ATUADORES 5
+#define QUEUE_SIZE 16
+#define N_UN_PROCESSAMENTO 4
 
-// filinha de merda
+#define PRINT
+
+int N_SENSORES, N_ATUADORES;
 int queue[QUEUE_SIZE];
-int front = 0, rear = 0;
-int count = 0;
+int head = 0;
+int tail = 0;
+int *package[3];
 
-// o mutex e variavel de condição para sironizar
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+void *produtor(void *arg)
+{
+  int id = *(int *) arg;
 
-pthread_cond_t cond_produtor = PTHREAD_COND_INITIALIZER;
-pthread_cond_t cond_consumidor = PTHREAD_COND_INITIALIZER;
+  do
+  {
+    int dado_sensorial = rand() % 1000;
+    queue[tail] = dado_sensorial;
+    tail = (tail + 1) % QUEUE_SIZE;
 
+    #ifdef PRINT
+    printf("Sensor %d leu %d\n", id, dado_sensorial);
+    #endif
 
+    sleep(rand() % 5);
+  } while (1);
 
-
-
-int N_SENSORES;
-
-typedef struct{
-	INT atividade;
-} Atuador;
-
-
-Atuador atuadores[N_ATUADORES];
-// func produtora/sensor
-void *produtor(void *arg) {
-	int id = *((int *)arg);
-    while (1) {
-        int dado = rand() % 1001; //rand
-
-        pthread_mutex_lock(&mutex);
-
-        // Aespera que tenha espaço na fial
-        while (count == QUEUE_SIZE) {
-            pthread_cond_wait(&cond_produtor, &mutex);
-        }
-
-        // add  dado na fila
-        queue[rear] = dado;
-        rear = (rear + 1) % QUEUE_SIZE;
-        count++;
-
-        printf("Produtor: %d: gerou dado %d\n",id, dado);
-
-        // sinaliza para o consumidor que existem dados on's
-        pthread_cond_signal(&cond_consumidor);
-
-        pthread_mutex_unlock(&mutex);
-
-        // 1 e 5 segundos
-        sleep(rand() % 5 + 1);
-    }
-    return NULL;
+  return NULL;
 }
 
-// func consumidora
-void *consumidor(void *arg) {
-    while (1) {
-        // bloq o acesso fila
-        pthread_mutex_lock(&mutex);
+void *consumidor(void *arg)
+{
+  int *package = (int *) arg;
+  int id = package[0];
+  int nivel_atividade = package[1];
+  int atuador = package[3];
 
-        // espera até que tenha dados  na fila
-        while (count == 0) {
+  int pid = fork();
 
-            pthread_cond_wait(&cond_consumidor, &mutex);
-        }
+  // envio da mudança do nível do painel
+  if (pid != 0)
+  {
+    int falha;
+    printf("Alterando: %s com valor %s\n", id, nivel_atividade);
+    sleep(1);
+  }
+  // mudança no nível de atividade
+  else
+  {
+    int falha;
+    atuador = nivel_atividade;
+    sleep(2 + rand() % 2);
+  }
 
-        // remove um dado da fila
-        int dado = queue[front];
-        front = (front + 1) % QUEUE_SIZE;
-        count--;
-
-        printf("Consumidor: processou dado %d\n", dado);
-
-        // sinaliza tens espaço na fila
-        pthread_cond_signal(&cond_produtor);
-
-        pthread_mutex_unlock(&mutex);
-
-        sleep(rand() % 5 + 1);
-    }
-    return NULL;
+  return NULL;
 }
 
-int main(int argc, char *argv[]) {
-	//verefica se o número de sensores foi fornecido
-	if (argc != 2) {
-		printf("Uso %s <N_SENSORES>\n", argv[0]);
-		return 1;
-	}
-    srand(time(NULL)); // Inicializa o gerador de números aleatórios
+int main(int argc, char *argv[])
+{
+  if (argc != 3)
+  {
+    printf("Para executar o programa deve escrever '%s <numero_sensores> <numero_atuadores>'\n", argv[0]);
+    return 1;
+  }
 
-	// obtem nnumero de sensores
-	N_SENSORES = atoi(argv[1]);
+  // inicializa gerador de números aleatórios
+  srand(time(NULL));
 
-	//cria arrays pra armazenar as threads produtoras
-	pthread_t thread_produtor[N_SENSORES];
-	//cria threads produtoras
-	for (int i = 0; i < N_SENSORES; i++){
-		int *id = malloc(sizeof(int));
-		*id = i;// atribui um id para cada thread produtora
-	    pthread_create(&thread_produtor[i], NULL, produtor, id);
+  // obtem numero de sensores
+  N_SENSORES = atoi(argv[1]);
+  N_ATUADORES = atoi(argv[2]);
 
-	}
+  int i, atuador[N_ATUADORES], dado_sensorial;
 
-	pthread_t thread_consumidor;// cria thread consumidora
-    pthread_create(&thread_consumidor, NULL, consumidor, NULL);
+  // cria array para armazenar as threads produtoras
+  pthread_t t_produtor[N_SENSORES];
+  pthread_t t_un_processamento[N_UN_PROCESSAMENTO];
 
-	//espera threads produtoras terminarem. obs: não tão terminando KSKS
-	for (int i = 0; i < N_SENSORES; i++){
-		pthread_join(thread_produtor[i], NULL);
-	}
-    // aguarda as threads terminarem, mas não tão terminando
-    pthread_join(thread_consumidor, NULL);
+  // cria threads produtoras
+  for (i = 0; i < N_SENSORES; i++)
+    pthread_create(&t_produtor[i], NULL, produtor, (void *) &i);
 
-    return 0;
+  // cria pool de threads
+  // printf("Dormindo...\n");
+  // sleep(10);
+  
+  while (tail != head)
+  {
+    #ifdef PRINT
+    printf("Central de controle recebeu %i\n", queue[head]);
+    #endif
+    
+    dado_sensorial = queue[head];
+    head = (head + 1) % QUEUE_SIZE;
+  }
+  // atribui os dados sensoriais a uma unidade de processamento
+  int id_atuador = dado_sensorial % N_ATUADORES;
+  int nivel_atividade = rand() % 100;
+  package[0] = &id_atuador;
+  package[1] = &nivel_atividade;
+  package[2] = &atuador[id_atuador];
+  pthread_create(&t_un_processamento[id_atuador % N_UN_PROCESSAMENTO], NULL, consumidor, (void *) &package);
+
+  // junta threads produtoras
+  for (i = 0; i < N_SENSORES; i++)
+    pthread_join(t_produtor[i], NULL);
+
+  return 0;
 }
