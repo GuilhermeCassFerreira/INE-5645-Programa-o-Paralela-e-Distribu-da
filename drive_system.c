@@ -7,59 +7,91 @@
 #define QUEUE_SIZE 16
 #define N_UN_PROCESSAMENTO 4
 
-#define PRINT
+struct actuator
+{
+  int nivel_atividade;
+};
+
+struct data
+{
+  int id;
+  int nivel_atividade;
+};
 
 int N_SENSORES, N_ATUADORES;
 int queue[QUEUE_SIZE];
 int head = 0;
 int tail = 0;
-int *package[3];
+struct actuator atuadores[2];
 
-void *produtor(void *arg)
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t queue_empty_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
+
+void *producer(void *args)
 {
-  int id = *(int *) arg;
+  int dado_sensorial, i;
 
-  do
+  for (i = 0; i < 15; i++)
   {
-    int dado_sensorial = rand() % 1000;
+    dado_sensorial = rand() % 1000;
+
+    pthread_mutex_lock(&queue_mutex);
+    while ((tail + 1) % QUEUE_SIZE == head)
+      pthread_cond_wait(&queue_full_cond, &queue_mutex);
+
     queue[tail] = dado_sensorial;
     tail = (tail + 1) % QUEUE_SIZE;
 
-    #ifdef PRINT
-    printf("Sensor %d leu %d\n", id, dado_sensorial);
-    #endif
+    printf("Sensor leu %d\n", dado_sensorial);
+
+    pthread_cond_signal(&queue_empty_cond);
+    pthread_mutex_unlock(&queue_mutex);
 
     sleep(rand() % 5);
-  } while (1);
+  }
 
-  return NULL;
+  pthread_exit(NULL);
 }
 
-void *consumidor(void *arg)
+void *consumer(void *args)
 {
-  int *package = (int *) arg;
-  int id = package[0];
-  int nivel_atividade = package[1];
-  int atuador = package[3];
+  struct data new_data;
 
-  int pid = fork();
-
-  // envio da mudança do nível do painel
-  if (pid != 0)
+  for (int i = 0; i < 16; i++)
   {
-    int falha;
-    printf("Alterando: %s com valor %s\n", id, nivel_atividade);
-    sleep(1);
-  }
-  // mudança no nível de atividade
-  else
-  {
-    int falha;
-    atuador = nivel_atividade;
-    sleep(2 + rand() % 2);
+    pthread_mutex_lock(&queue_mutex);
+    while (head == tail)
+      pthread_cond_wait(&queue_empty_cond, &queue_mutex);
+
+    int dado_sensorial = queue[head];
+    head = (head + 1) % QUEUE_SIZE;
+
+    printf("Central de controle recebeu %i\n", dado_sensorial);
+
+    new_data.id = dado_sensorial % N_ATUADORES;
+    new_data.nivel_atividade = rand() % 100;
+
+    pthread_mutex_unlock(&queue_mutex);
+
+    struct actuator *atuador = &atuadores[new_data.id - 1];
+
+    if (fork() == 0)
+    {
+      printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
+      sleep(1);
+      exit(1);
+    }
+    else
+    {
+      pthread_mutex_lock(&queue_mutex);
+      atuador->nivel_atividade = new_data.nivel_atividade;
+      sleep(2 + rand() % 2);
+      pthread_mutex_unlock(&queue_mutex);
+    }
   }
 
-  return NULL;
+  pthread_exit(NULL);
 }
 
 int main(int argc, char *argv[])
@@ -70,47 +102,18 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  // inicializa gerador de números aleatórios
   srand(time(NULL));
 
-  // obtem numero de sensores
   N_SENSORES = atoi(argv[1]);
   N_ATUADORES = atoi(argv[2]);
 
-  int i, atuador[N_ATUADORES], dado_sensorial;
-
-  // cria array para armazenar as threads produtoras
-  pthread_t t_produtor[N_SENSORES];
-  pthread_t t_un_processamento[N_UN_PROCESSAMENTO];
-
-  // cria threads produtoras
-  for (i = 0; i < N_SENSORES; i++)
-    pthread_create(&t_produtor[i], NULL, produtor, (void *) &i);
-
-  // cria pool de threads
-  // printf("Dormindo...\n");
-  // sleep(10);
+  pthread_t producer_thread, consumer_thread;
   
-  while (tail != head)
-  {
-    #ifdef PRINT
-    printf("Central de controle recebeu %i\n", queue[head]);
-    #endif
-    
-    dado_sensorial = queue[head];
-    head = (head + 1) % QUEUE_SIZE;
-  }
-  // atribui os dados sensoriais a uma unidade de processamento
-  int id_atuador = dado_sensorial % N_ATUADORES;
-  int nivel_atividade = rand() % 100;
-  package[0] = &id_atuador;
-  package[1] = &nivel_atividade;
-  package[2] = &atuador[id_atuador];
-  pthread_create(&t_un_processamento[id_atuador % N_UN_PROCESSAMENTO], NULL, consumidor, (void *) &package);
+  pthread_create(&producer_thread, NULL, producer, NULL);
+  pthread_create(&consumer_thread, NULL, consumer, NULL);
 
-  // junta threads produtoras
-  for (i = 0; i < N_SENSORES; i++)
-    pthread_join(t_produtor[i], NULL);
+  pthread_join(producer_thread, NULL);
+  pthread_join(consumer_thread, NULL);
 
   return 0;
 }
