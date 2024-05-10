@@ -9,7 +9,7 @@
 #define QUEUE_SIZE 16
 #define N_UN_PROCESSAMENTO 4
 
-// #define PRINT
+// #define LOG
 
 struct actuator
 {
@@ -26,8 +26,7 @@ int N_SENSORES, N_ATUADORES;
 int queue[QUEUE_SIZE];
 int head = 0;
 int tail = 0;
-// TODO: alterar o numero de atuadores de acordo com o input do usuario
-struct actuator atuadores[2];
+struct actuator *atuadores;
 
 pthread_mutex_t actuator_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t print_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -59,11 +58,9 @@ void actuate(void *arg)
 
 void *producer()
 {
-  int dado_sensorial, i;
-
-  for (i = 0; i < 15; i++)
+  while (1)
   {
-    dado_sensorial = rand() % 1000;
+    int dado_sensorial = rand() % 1000;
 
     pthread_mutex_lock(&queue_mutex);
     while ((tail + 1) % QUEUE_SIZE == head)
@@ -72,8 +69,8 @@ void *producer()
     queue[tail] = dado_sensorial;
     tail = (tail + 1) % QUEUE_SIZE;
 
-    #ifdef PRINT
-    printf("Sensor leu %d\n", dado_sensorial);
+    #ifdef LOG
+    printf("[P] dado_sensorial: %i | tail: %i | novo tail: %i\n", dado_sensorial, (tail - 1) % QUEUE_SIZE, tail);
     #endif
 
     pthread_cond_signal(&queue_empty_cond);
@@ -87,27 +84,31 @@ void *producer()
 
 void *consumer(void *arg)
 {
-  struct data new_data;
-  thread_pool_t *pool = (thread_pool_t *) arg;
-
-  for (int i = 0; i < 16; i++)
+  while (1)
   {
     pthread_mutex_lock(&queue_mutex);
     while (head == tail)
       pthread_cond_wait(&queue_empty_cond, &queue_mutex);
 
+    struct data new_data;
+    thread_pool_t *pool = (thread_pool_t *) arg;
+
     int dado_sensorial = queue[head];
     head = (head + 1) % QUEUE_SIZE;
 
-
-    #ifdef PRINT
-    printf("Central de controle recebeu %i\n", dado_sensorial);
+    #ifdef LOG
+    printf("[C] dado_sensorial: %i | head: %i | novo head: %i\n", dado_sensorial, (head - 1) % QUEUE_SIZE, head);
     #endif
 
     new_data.id = dado_sensorial % N_ATUADORES;
     new_data.nivel_atividade = rand() % 100;
 
+    #ifdef LOG
+    printf("[C] nivel_atividade: %i | id: %i\n", new_data.nivel_atividade, new_data.id);
+    #endif
+
     thread_pool_submit(pool, actuate, &new_data);
+    pthread_cond_signal(&queue_full_cond);
     pthread_mutex_unlock(&queue_mutex);
   }
 
@@ -126,17 +127,55 @@ int main(int argc, char *argv[])
 
   N_SENSORES = atoi(argv[1]);
   N_ATUADORES = atoi(argv[2]);
+  atuadores = calloc(N_ATUADORES, sizeof(struct actuator));
 
-  pthread_t producer_thread, consumer_thread;
+  pthread_t producer_thread[N_SENSORES], consumer_thread;
   thread_pool_t pool;
+
+  #ifdef LOG
+  printf("[M] Pool de threads criado\n");
+  #endif
+
   thread_pool_init(&pool, N_UN_PROCESSAMENTO);
 
-  pthread_create(&producer_thread, NULL, producer, NULL);
+  for (int i = 0; i < N_SENSORES; i++)
+    pthread_create(&producer_thread[i], NULL, producer, NULL);
+
+  #ifdef LOG
+  printf("[M] Todas threads produtoras criadas\n");
+  #endif
+
   pthread_create(&consumer_thread, NULL, consumer, &pool);
 
-  pthread_join(producer_thread, NULL);
+  #ifdef LOG
+  printf("[M] Thread consumidora criada\n");
+  #endif
+
+  for (int i = 0; i < N_SENSORES; i++)
+    pthread_join(producer_thread[i], NULL);
+
+  #ifdef LOG
+  printf("[M] Todas threads produtoras finalizadas\n");
+  #endif
+
   pthread_join(consumer_thread, NULL);
+
+  #ifdef LOG
+  printf("[M] Thread consumidora finalizada\n");
+  #endif
+
   thread_pool_shutdown(&pool);
+
+  #ifdef LOG
+  printf("[M] Pool de threads finalizado\n");
+  #endif
+
+  free(atuadores);
+  pthread_mutex_destroy(&actuator_mutex);
+  pthread_mutex_destroy(&print_mutex);
+  pthread_mutex_destroy(&queue_mutex);
+  pthread_cond_destroy(&queue_empty_cond);
+  pthread_cond_destroy(&queue_full_cond);
 
   return 0;
 }
