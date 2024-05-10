@@ -4,6 +4,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "threadpool.h"
+
 #define QUEUE_SIZE 16
 #define N_UN_PROCESSAMENTO 4
 
@@ -33,9 +35,9 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_empty_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
 
-void *actuate(void *args)
+void actuate(void *arg)
 {
-  struct data new_data = *(struct data *) args;
+  struct data new_data = *(struct data *) arg;
   struct actuator *atuador = &atuadores[new_data.id - 1];
 
   if (fork() == 0)
@@ -55,7 +57,7 @@ void *actuate(void *args)
   }
 }
 
-void *producer(void *args)
+void *producer()
 {
   int dado_sensorial, i;
 
@@ -83,10 +85,10 @@ void *producer(void *args)
   pthread_exit(NULL);
 }
 
-void *consumer(void *args)
+void *consumer(void *arg)
 {
   struct data new_data;
-  pthread_t actuator_thread;
+  thread_pool_t *pool = (thread_pool_t *) arg;
 
   for (int i = 0; i < 16; i++)
   {
@@ -105,10 +107,8 @@ void *consumer(void *args)
     new_data.id = dado_sensorial % N_ATUADORES;
     new_data.nivel_atividade = rand() % 100;
 
-    // TODO: alterar esse pthread_create pela delegação para a pool de threads
-    pthread_create(&actuator_thread, NULL, actuate, (void *) &new_data);
+    thread_pool_submit(pool, actuate, &new_data);
     pthread_mutex_unlock(&queue_mutex);
-    pthread_join(actuator_thread, NULL);
   }
 
   pthread_exit(NULL);
@@ -128,12 +128,15 @@ int main(int argc, char *argv[])
   N_ATUADORES = atoi(argv[2]);
 
   pthread_t producer_thread, consumer_thread;
-  
+  thread_pool_t pool;
+  thread_pool_init(&pool, N_UN_PROCESSAMENTO);
+
   pthread_create(&producer_thread, NULL, producer, NULL);
-  pthread_create(&consumer_thread, NULL, consumer, NULL);
+  pthread_create(&consumer_thread, NULL, consumer, &pool);
 
   pthread_join(producer_thread, NULL);
   pthread_join(consumer_thread, NULL);
+  thread_pool_shutdown(&pool);
 
   return 0;
 }
