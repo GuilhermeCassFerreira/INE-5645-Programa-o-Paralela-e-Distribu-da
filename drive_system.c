@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define QUEUE_SIZE 16
 #define N_UN_PROCESSAMENTO 4
@@ -38,7 +39,12 @@ void *actuate(void *args)
   struct data new_data = *(struct data *) args;
   struct actuator *atuador = &atuadores[new_data.id - 1];
 
-  if (fork() == 0)
+  if (fork() == -1)
+  {
+    fprintf(stderr, "Falha no atuador %d: %s\n", new_data.id, strerror(errno));
+    pthread_exit(NULL);
+  }
+  else if (fork() == 0)
   {
     pthread_mutex_lock(&print_mutex);
     printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
@@ -53,6 +59,8 @@ void *actuate(void *args)
     sleep(2 + rand() % 2);
     pthread_mutex_unlock(&actuator_mutex);
   }
+
+  pthread_exit(NULL);
 }
 
 void *producer(void *args)
