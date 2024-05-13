@@ -34,27 +34,40 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_empty_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
 
+// Dentro da função actuate
 void actuate(void *arg)
 {
-  struct data new_data = *(struct data *) arg;
-  struct actuator *atuador = &atuadores[new_data.id - 1];
+    struct data new_data = *(struct data *)arg;
+    struct actuator *atuador = &atuadores[new_data.id - 1];
 
-  if (fork() == 0)
-  {
-    pthread_mutex_lock(&print_mutex);
-    printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
-    sleep(1);
-    pthread_mutex_unlock(&print_mutex);
-    exit(1);
-  }
-  else
-  {
-    pthread_mutex_lock(&actuator_mutex);
-    atuador->nivel_atividade = new_data.nivel_atividade;
-    sleep(2 + rand() % 2);
-    pthread_mutex_unlock(&actuator_mutex);
-  }
+    // Introduzindo falhas com uma probabilidade de 20%
+    if (rand() % 100 < 20)
+    {
+        pthread_mutex_lock(&print_mutex);
+        printf("Falha: %i\n", new_data.id);
+        pthread_mutex_unlock(&print_mutex);
+        return;
+    }
+
+    if (fork() == 0)
+    {
+        pthread_mutex_lock(&print_mutex);
+        printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
+        sleep(1);
+        pthread_mutex_unlock(&print_mutex);
+        exit(1);
+    }
+    else
+    {
+        pthread_mutex_lock(&actuator_mutex);
+        atuador->nivel_atividade = new_data.nivel_atividade;
+        sleep(2 + rand() % 2);
+        pthread_mutex_unlock(&actuator_mutex);
+    }
 }
+
+
+
 
 void *producer()
 {
@@ -82,38 +95,48 @@ void *producer()
   pthread_exit(NULL);
 }
 
+// Dentro da função consumer
 void *consumer(void *arg)
 {
-  while (1)
-  {
-    pthread_mutex_lock(&queue_mutex);
-    while (head == tail)
-      pthread_cond_wait(&queue_empty_cond, &queue_mutex);
+    while (1)
+    {
+        pthread_mutex_lock(&queue_mutex);
+        while (head == tail)
+            pthread_cond_wait(&queue_empty_cond, &queue_mutex);
 
-    struct data new_data;
-    thread_pool_t *pool = (thread_pool_t *) arg;
+        struct data new_data;
+        thread_pool_t *pool = (thread_pool_t *)arg;
 
-    int dado_sensorial = queue[head];
-    head = (head + 1) % QUEUE_SIZE;
+        int dado_sensorial = queue[head];
+        head = (head + 1) % QUEUE_SIZE;
 
-    #ifdef LOG
-    printf("[C] dado_sensorial: %i | head: %i | novo head: %i\n", dado_sensorial, (head - 1) % QUEUE_SIZE, head);
-    #endif
+        new_data.id = dado_sensorial % N_ATUADORES;
+        new_data.nivel_atividade = rand() % 100;
 
-    new_data.id = dado_sensorial % N_ATUADORES;
-    new_data.nivel_atividade = rand() % 100;
+        int falha_detectada = 0; // Flag para indicar se ocorreu uma falha
 
-    #ifdef LOG
-    printf("[C] nivel_atividade: %i | id: %i\n", new_data.nivel_atividade, new_data.id);
-    #endif
+        thread_pool_submit(pool, actuate, &new_data);
 
-    thread_pool_submit(pool, actuate, &new_data);
-    pthread_cond_signal(&queue_full_cond);
-    pthread_mutex_unlock(&queue_mutex);
-  }
+        // Atualizando a flag se ocorreu uma falha em qualquer subtarefa
+        if (rand() % 100 < 20) // Simulando falha com probabilidade de 20%
+            falha_detectada = 1;
 
-  pthread_exit(NULL);
+        // Aqui você precisa enviar a segunda subtarefa e atualizar a flag 'falha_detectada' conforme necessário
+
+        pthread_mutex_unlock(&queue_mutex);
+
+        // Impressão da mensagem de falha, se aplicável
+        if (falha_detectada)
+        {
+            pthread_mutex_lock(&print_mutex);
+            printf("Falha ao processar dado sensorial.\n");
+            pthread_mutex_unlock(&print_mutex);
+        }
+    }
+
+    pthread_exit(NULL);
 }
+
 
 int main(int argc, char *argv[])
 {
