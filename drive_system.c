@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
-
+#include <sys/wait.h> //depedencia para poder esperar o processo filho
 #include "threadpool.h"
 
 #define QUEUE_SIZE 16
@@ -36,53 +36,88 @@ pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
 
 void actuate(void *arg)
 {
+
+  //extrai os dados como argumentos
   struct data new_data = *(struct data *) arg;
+
+  // pega o ponteiro para o atuador dos dados recebidos  
   struct actuator *atuador = &atuadores[new_data.id - 1];
+  
+  //variavel para indicar falhas
   int falha = 0;
 
-  if (fork() == 0)
+  pid_t pid = fork();//pega o id do processo filho após o fork
+
+  //ve se está executando no contexto do processo filho
+  if (pid == 0)
   {
+    
+
+    // ve se teve falha no envio da mudança do painel
     if (rand() % 100 < 20)
     {
-      falha = 1;
+      falha = 1; // marca que teve falha
 
+      // imprime mensagem de falha, se LOG estiver definido
       #ifdef LOG
       printf("[A] Envio de mudança ao painel falhou\n");
       #endif
 
-      exit(1);
+      // Termina o processo filho com código de saída 1 (indicando falha)
+      exit(1);//saida de falha
     }
     else
     {
+      // se não tiver falha filho imprime alteração e para
       pthread_mutex_lock(&print_mutex);
       printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
       sleep(1);
       pthread_mutex_unlock(&print_mutex);
-      exit(0);
+      
+      exit(0);//termina processo sem erro
     }
   }
-  else
+  else if (pid > 0)// ve se é pai
   {
-    if (rand() % 100 < 20)
-    {
-      falha = 1;
+    
+    int status;
 
+    waitpid(pid, &status, 0);//pai espera filho
+
+    if (WIFEXITED(status))// ve se o process filho terminou sem erro
+    {
+      if (WIFEXITED(status) == 1)// verifica se processo filho terminou com erro
+      {
+        falha = 1;//falha
+        printf("Falha: %i\n", new_data.id);//imprime menssagem de falha
+      }
+    }
+    else{
+      perror("Erro ao criar processo filho");
+      exit(EXIT_FAILURE);
+    }
+    //se não houve falha , pai continua coo o resto da lógica
+    if (!falha){
+      if (rand() % 100 < 20)
+      {
+        falha = 1;
       #ifdef LOG
       printf("[A] Mudança do nível de atividade do atuador falhou\n");
       #endif
+      }
     }
     else
     {
+      //modifica nível de atividade do atuador
       pthread_mutex_lock(&actuator_mutex);
       atuador->nivel_atividade = new_data.nivel_atividade;
       sleep(2 + rand() % 2);
       pthread_mutex_unlock(&actuator_mutex);
     }
-  }
 
-  if (falha)
-    printf("Falha: %i\n", new_data.id);
+  }
 }
+
 
 void *producer()
 {
