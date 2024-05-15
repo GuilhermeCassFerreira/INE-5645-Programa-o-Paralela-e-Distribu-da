@@ -39,49 +39,52 @@ void actuate(void *arg)
   struct data new_data = *(struct data *) arg;
   struct actuator *atuador = &atuadores[new_data.id - 1];
   int falha = 0;
+  int num_processos = 2;
 
-  if (fork() == 0)
-  {
-    if (rand() % 100 < 20)
+  for (int i = 0; i < num_processos; i++){
+    if (fork() == 0)
     {
-      falha = 1;
+      if (rand() % 100 < 20)
+      {
+        falha = 1;
 
-      #ifdef LOG
-      printf("[A] Envio de mudança ao painel falhou\n");
-      #endif
+        #ifdef LOG
+        printf("[A] Envio de mudança ao painel falhou\n");
+        #endif
 
-      exit(1);
+        exit(1);
+      }
+      else
+      {
+        pthread_mutex_lock(&print_mutex);
+        printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
+        sleep(1);
+        pthread_mutex_unlock(&print_mutex);
+        exit(0);
+      }
     }
     else
     {
-      pthread_mutex_lock(&print_mutex);
-      printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
-      sleep(1);
-      pthread_mutex_unlock(&print_mutex);
-      exit(0);
-    }
-  }
-  else
-  {
-    if (rand() % 100 < 20)
-    {
-      falha = 1;
+      if (rand() % 100 < 20)
+      {
+        falha = 1;
 
-      #ifdef LOG
-      printf("[A] Mudança do nível de atividade do atuador falhou\n");
-      #endif
+        #ifdef LOG
+        printf("[A] Mudança do nível de atividade do atuador falhou\n");
+        #endif
+      }
+      else
+      {
+        pthread_mutex_lock(&actuator_mutex);
+        atuador->nivel_atividade = new_data.nivel_atividade;
+        sleep(2 + rand() % 2);
+        pthread_mutex_unlock(&actuator_mutex);
+      }
     }
-    else
-    {
-      pthread_mutex_lock(&actuator_mutex);
-      atuador->nivel_atividade = new_data.nivel_atividade;
-      sleep(2 + rand() % 2);
-      pthread_mutex_unlock(&actuator_mutex);
-    }
-  }
 
-  if (falha)
-    printf("Falha: %i\n", new_data.id);
+    if (falha)
+      printf("Falha: %i\n", new_data.id);
+  }
 }
 
 void *producer()
