@@ -8,7 +8,6 @@ void *thread_pool_worker(void *arg)
   while(1)
   {
     pthread_mutex_lock(&pool->lock);
-
     while (pool->task_queue == NULL && !pool->shutdown)
       pthread_cond_wait(&pool->cond, &pool->lock);
     
