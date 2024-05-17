@@ -34,89 +34,87 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_empty_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
 
+
 void actuate(void *arg)
 {
-
-  //extrai os dados como argumentos
   struct data new_data = *(struct data *) arg;
-
-  // pega o ponteiro para o atuador dos dados recebidos  
   struct actuator *atuador = &atuadores[new_data.id - 1];
-  
-  //variavel para indicar falhas
-  int falha = 0;
+  int falha_envio_painel = 0; 
+  int falha_atuador = 0;      
 
-  pid_t pid = fork();//pega o id do processo filho após o fork
+  // Criar o primeiro processo filho
+  pid_t pid_envio_painel = fork();
 
-  //ve se está executando no contexto do processo filho
-  if (pid == 0)
+  if (pid_envio_painel == 0) 
   {
-    
-
-    // ve se teve falha no envio da mudança do painel
     if (rand() % 100 < 20)
     {
-      falha = 1; // marca que teve falha
-
-      // imprime mensagem de falha, se LOG estiver definido
+      falha_envio_painel = 1; // marca falha no envio de mudanças ao painel
       #ifdef LOG
       printf("[A] Envio de mudança ao painel falhou\n");
       #endif
-
-      // Termina o processo filho com código de saída 1 (indicando falha)
-      exit(1);//saida de falha
     }
     else
     {
-      // se não tiver falha filho imprime alteração e para
       pthread_mutex_lock(&print_mutex);
       printf("Alterando: %i com valor %i\n", new_data.id, new_data.nivel_atividade);
       sleep(1);
       pthread_mutex_unlock(&print_mutex);
-      
-      exit(0);//termina processo sem erro
     }
+
+    exit(falha_envio_painel ? 1 : 0); // termina o processo filho 
   }
-  else if (pid > 0)// ve se é pai
+  else if (pid_envio_painel < 0) // Se ocorreu um erro ao criar o processo filho para o envio de mudanças ao painel
   {
-    
-    int status;
+    perror("Erro ao criar processo filho para o envio de mudanças ao painel");
+    exit(EXIT_FAILURE);
+  }
 
-    waitpid(pid, &status, 0);//pai espera filho
+  // cria o segundo processo filho
+  pid_t pid_atuador = fork();
 
-    if (WIFEXITED(status))// ve se o process filho terminou sem erro
+  if (pid_atuador == 0) 
+  {
+    if (rand() % 100 < 20)
     {
-      if (WIFEXITED(status) == 1)// verifica se processo filho terminou com erro
-      {
-        falha = 1;//falha
-        printf("Falha: %i\n", new_data.id);//imprime menssagem de falha
-      }
-    }
-    else{
-      perror("Erro ao criar processo filho");
-      exit(EXIT_FAILURE);
-    }
-    //se não houve falha , pai continua coo o resto da lógica
-    if (!falha){
-      if (rand() % 100 < 20)
-      {
-        falha = 1;
+      falha_atuador = 1; 
       #ifdef LOG
       printf("[A] Mudança do nível de atividade do atuador falhou\n");
       #endif
-      }
     }
     else
     {
-      //modifica nível de atividade do atuador
       pthread_mutex_lock(&actuator_mutex);
       atuador->nivel_atividade = new_data.nivel_atividade;
       sleep(2 + rand() % 2);
       pthread_mutex_unlock(&actuator_mutex);
     }
 
+    exit(falha_atuador ? 1 : 0); 
+  }
+  else if (pid_atuador < 0) 
+  {
+    perror("Erro ao criar processo filho para a mudança no nível de atividade do atuador");
+    exit(EXIT_FAILURE);
+  }
+
+  // processo pai espera pelos dois processos filhos
+  int status_envio_painel, status_atuador;
+  waitpid(pid_envio_painel, &status_envio_painel, 0);
+  waitpid(pid_atuador, &status_atuador, 0);
+
+  // verifica se algum dos processos filhos terminou com erro 
+  if (WIFEXITED(status_envio_painel) && WEXITSTATUS(status_envio_painel) == 1)
+  {
+    printf("Falha no envio de mudanças ao painel: %i\n", new_data.id);
+  }
+
+  if (WIFEXITED(status_atuador) && WEXITSTATUS(status_atuador) == 1)
+  {
+    printf("Falha na mudança do nível de atividade do atuador: %i\n", new_data.id);
   }
 }
+
 
 
 void *producer()
