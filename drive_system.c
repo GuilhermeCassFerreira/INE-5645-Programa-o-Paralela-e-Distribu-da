@@ -34,7 +34,6 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_empty_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
 
-
 void actuate(void *arg) {
   struct data *new_data_ptr = (struct data *) arg;
   struct data new_data = *new_data_ptr;
@@ -46,6 +45,8 @@ void actuate(void *arg) {
   pid_t pid_envio_painel = fork();
 
   if (pid_envio_painel == 0) {
+    printf("Processo filho para o envio de mudanças ao painel criado (PID: %d)\n", getpid());
+
     if (rand() % 100 < 20) {
       falha_envio_painel = 1; 
     } else {
@@ -59,11 +60,14 @@ void actuate(void *arg) {
     perror("Erro ao criar processo filho para o envio de mudanças ao painel");
     exit(EXIT_FAILURE);
   }
+
   pid_t pid_atuador = fork();
 
   if (pid_atuador == 0) {
+    printf("Processo filho para a mudança no nível de atividade do atuador criado (PID: %d)\n", getpid());
+
     if (rand() % 100 < 20) {
-      falha_atuador = 1; 
+      falha_atuador = 1; //
     } else {
       pthread_mutex_lock(&actuator_mutex);
       atuador->nivel_atividade = new_data.nivel_atividade;
@@ -76,9 +80,12 @@ void actuate(void *arg) {
     exit(EXIT_FAILURE);
   }
 
+  printf("Processo pai esperando pelos processos filhos...\n");
   int status_envio_painel, status_atuador;
   waitpid(pid_envio_painel, &status_envio_painel, 0);
   waitpid(pid_atuador, &status_atuador, 0);
+
+  printf("Processo pai concluiu a espera pelos processos filhos.\n");
 
   if (WIFEXITED(status_envio_painel) && WEXITSTATUS(status_envio_painel) == 1) {
     falha_envio_painel = 1;
@@ -92,6 +99,7 @@ void actuate(void *arg) {
     printf("Falha: %i\n", new_data.id);
   }
 }
+
 
 
 
