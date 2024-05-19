@@ -8,6 +8,7 @@ Inicialmente, foi criado um documento para sintetizar os requisitos pedidos no t
 
 Uma vez com o código sequencial funcional, o foco da equipe passou a ser a sua paralelização. A divisão do trabalho nesta parte se deu de forma em que um integrante ficou responsável pela sincronização das threads (a fim de evitar condições de corrida e demais problemas provenientes da execução em paralelo, para isso foi utilizado exclusão mútua e variáveis de condição) e outro ficou responsável pela implementação da pool de threads, a qual é explicada em uma seção abaixo.
 
+
 ### Paralelização do Código Sequencial
 
 A paralelização do código sequencial foi alcançada por meio da utilização de múltiplas threads para processar tarefas de forma simultânea. Para garantir a integridade dos dados e a sincronização entre as threads, foram empregados mecanismos de exclusão mútua e variáveis de condição.
