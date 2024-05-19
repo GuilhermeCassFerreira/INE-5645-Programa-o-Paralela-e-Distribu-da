@@ -39,7 +39,7 @@ void actuate(void *arg)
 {
   struct data *new_data_ptr = (struct data *) arg;
   struct data new_data = *new_data_ptr;
-  struct actuator *atuador = &atuadores[new_data.id];
+  struct actuator *atuador = &atuadores[new_data.id - 1];
   int status_envio_painel, status_atuador;
   int falha_envio_painel = 0;
   int falha_atuador = 0;
