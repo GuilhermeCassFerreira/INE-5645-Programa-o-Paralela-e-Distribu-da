@@ -11,23 +11,28 @@ Uma vez com o código sequencial funcional, o foco da equipe passou a ser a sua 
 ### Paralelização do Código Sequencial
 
 A paralelização do código sequencial foi alcançada por meio da utilização de múltiplas threads para processar tarefas de forma simultânea. Para garantir a integridade dos dados e a sincronização entre as threads, foram empregados mecanismos de exclusão mútua e variáveis de condição.
-Estrutura de Sincronização das Threads
+
+### Estrutura de Sincronização das Threads
 
 Foi criada uma estrutura pthread_mutex_t (actuator_mutex) para garantir a exclusão mútua no acesso e modificação dos atuadores compartilhados entre as threads. Isso evita condições de corrida, garantindo que apenas uma thread por vez possa alterar o estado dos atuadores.
 
 Além disso, uma estrutura pthread_mutex_t adicional (print_mutex) foi utilizada para controlar o acesso à saída padrão (stdout) durante a impressão das mensagens no console. Isso evita que múltiplas threads escrevam simultaneamente na saída padrão, o que poderia resultar em mensagens sobrepostas ou mal formatadas.
-Implementação da Fila de Tarefas
 
-Para processar as tarefas de forma paralela, foi adotada uma abordagem de produtor-consumidor, onde os produtores são as threads que geram os dados sensoriais e os consumidores são as threads que processam esses dados e controlam os atuadores.
+### Implementação da Fila de Tarefas
+
+Para processar as tarefas de forma paralela, foi adotada uma abordagem de produtor-consumidor, onde os produtores são as threads que geram os dados sensoriais (sensores) e o consumidor é uma threads que processa esses dados (central de controle) e delega à pool de threads (unidades de processamento) que controla os atuadores.
 
 Foi implementada uma fila de tarefas utilizando um array queue, onde os dados sensoriais são armazenados para posterior processamento pela thread consumidora. Essa fila é protegida por exclusão mútua, garantindo que apenas uma thread por vez possa adicionar ou remover elementos da fila.
-Coordenação das Threads
+
+### Coordenação das Threads
 
 A coordenação entre as threads é realizada por meio de variáveis de condição (queue_empty_cond e queue_full_cond). Quando a fila de tarefas está vazia, as threads consumidoras aguardam em uma variável de condição (queue_empty_cond) até que novas tarefas sejam adicionadas à fila. Da mesma forma, quando a fila de tarefas está cheia, as threads produtoras aguardam em uma variável de condição (queue_full_cond) até que haja espaço disponível para adicionar novas tarefas.
-Execução Paralela das Tarefas
 
-As tarefas são processadas de forma paralela pelas threads consumidoras, que executam a função actuate. Cada thread consumidora retira uma tarefa da fila de tarefas e a processa, garantindo que múltiplas tarefas possam ser executadas simultaneamente.
-Encerramento do Sistema
+### Execução Paralela das Tarefas
+
+As tarefas são processadas de forma paralela pelas threads da pool de threads, que executam a função `actuate`. Cada thread da pool (unidade de processamento) retira uma tarefa da fila de tarefas e a processa, garantindo que múltiplas tarefas possam ser executadas simultaneamente.
+
+### Encerramento do Sistema
 
 Ao final da execução do programa, é realizado o encerramento adequado das threads e a liberação dos recursos alocados na memória. Isso é feito de forma coordenada, garantindo que todas as threads sejam finalizadas corretamente e que não ocorram vazamentos de memória.
 
