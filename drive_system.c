@@ -35,7 +35,6 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_empty_cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t queue_full_cond = PTHREAD_COND_INITIALIZER;
 
-
 void actuate(void *arg)
 {
   struct data *new_data_ptr = (struct data *) arg;
