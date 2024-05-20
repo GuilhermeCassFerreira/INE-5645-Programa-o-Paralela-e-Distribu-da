@@ -93,6 +93,20 @@ Foi definido uma condição de pré-compilação para o sistema realizar logging
 
 Para logar no terminal basta descomentar a linha que contém `#define LOG`.
 
+##Exemplo de execução
+
+![Logo da Minha Empresa](https://drive.google.com/file/d/1maxjTN9a9abwVclkPu4P9zpYpXwCjnHB/view?usp=sharing)
+
+Podemos ver nesse exemplo onde executamos o programa com 6 sensores e 6 atuadores, em que habilitamos o log, a pool de threads sendo criada após a
+validação das entradas do usuário que é usada para alocar memória para o vetor de tamanho dinâmico.
+Logo após a criação da pool de threads as threads produtoras são criadas, no caso dessa execução 6 threads produtoras são criadas. Em seguida a 
+thread consumidora é criada.
+No terminal vemos que após a sinalização da criação do pool de threads já vemos dados sensoriais sendo criados, já que antes da execução chegar na 
+próxima linha onde está o print as threads já estão trabalhando. Vemos que o log mostra a criaçaõ das threads produtoras e antes de aparecer a criação
+da thread consumidora mais dados sensorias são criados, onde é usado o mutex para que cada thread produtora não acesse de maneira simultanea a fila e
+consiga colocar o dado sensorial na proxima posição da fila para processamento.
+Podemos observar a execução da thread consumidora consumindo os dados da fila nas saídas identificadas por [C]. Também vemos as saídas que mostram o os dados com seu id e seu nível de ativide, mandado como parâmetro para o pool de threads.
+
 ## Estudantes
 
 - Bruno Vazquez Lafaiete
